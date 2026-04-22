@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio Dock</title>
+  <meta name="description" content="오디오 파일을 업로드하고 바로 재생할 수 있는 간단한 웹 플레이어">
+  <meta name="theme-color" content="#d05c2f">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Audio Dock">
+  <meta property="og:description" content="오디오 파일을 업로드하고 바로 재생할 수 있는 간단한 웹 플레이어">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <p class="eyebrow">UPLOAD + PLAY</p>
+      <h1>오디오 파일을 올리고 바로 재생하는<br>개인용 플레이어</h1>
+      <p class="hero-copy">
+        MP3, WAV, OGG 같은 오디오 파일을 드래그해서 올리면
+        재생 목록에 추가되고 바로 들을 수 있습니다.
+      </p>
+    </header>
+
+    <main class="app-grid">
+      <section class="panel upload-panel">
+        <label class="dropzone" for="audio-input" id="dropzone">
+          <input id="audio-input" type="file" accept="audio/*" multiple>
+          <span class="dropzone-icon">♪</span>
+          <strong>오디오 파일 업로드</strong>
+          <span>파일을 끌어다 놓거나 클릭해서 선택하세요</span>
+        </label>
+
+        <div class="meta-row">
+          <div class="meta-card">
+            <span class="meta-label">업로드 수</span>
+            <strong id="file-count">0개</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">현재 상태</span>
+            <strong id="status-text">대기 중</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel player-panel">
+        <div class="now-playing">
+          <p class="section-label">NOW PLAYING</p>
+          <h2 id="track-title">재생할 파일을 선택하세요</h2>
+          <p id="track-meta">아직 업로드된 오디오가 없습니다.</p>
+        </div>
+
+        <audio id="audio-player" controls preload="metadata"></audio>
+
+        <div class="player-actions">
+          <button type="button" class="secondary-button" id="play-first-button">첫 번째 파일 재생</button>
+          <button type="button" class="secondary-button" id="clear-button">목록 비우기</button>
+        </div>
+      </section>
+
+      <section class="panel playlist-panel">
+        <div class="playlist-header">
+          <p class="section-label">PLAYLIST</p>
+          <h2>업로드한 파일</h2>
+        </div>
+        <ul id="playlist" class="playlist">
+          <li class="empty-state">업로드한 파일이 여기에 표시됩니다.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
