@@ -6,6 +6,8 @@ const trackTitle = document.getElementById("track-title");
 const trackMeta = document.getElementById("track-meta");
 const fileCount = document.getElementById("file-count");
 const statusText = document.getElementById("status-text");
+const previousButton = document.getElementById("previous-button");
+const nextButton = document.getElementById("next-button");
 const playFirstButton = document.getElementById("play-first-button");
 const clearButton = document.getElementById("clear-button");
 
@@ -36,6 +38,18 @@ function setStatus(message) {
 
 function updateSummary() {
   fileCount.textContent = `${tracks.length}개`;
+}
+
+function getActiveIndex() {
+  return tracks.findIndex((track) => track.id === activeTrackId);
+}
+
+function updateNavigationButtons() {
+  const activeIndex = getActiveIndex();
+  const hasTracks = tracks.length > 0;
+
+  previousButton.disabled = !hasTracks || activeIndex <= 0;
+  nextButton.disabled = !hasTracks || activeIndex === -1 || activeIndex >= tracks.length - 1;
 }
 
 function renderPlaylist() {
@@ -76,6 +90,8 @@ function renderPlaylist() {
     item.append(details, button);
     playlist.appendChild(item);
   }
+
+  updateNavigationButtons();
 }
 
 function playTrack(trackId) {
@@ -95,6 +111,29 @@ function playTrack(trackId) {
   trackMeta.textContent = `${track.file.type || "오디오 파일"} · ${formatBytes(track.file.size)}`;
   setStatus("재생 중");
   renderPlaylist();
+}
+
+function playAdjacentTrack(direction) {
+  if (tracks.length === 0) {
+    setStatus("먼저 오디오 파일을 업로드해주세요.");
+    return;
+  }
+
+  if (activeTrackId === null) {
+    playTrack(tracks[0].id);
+    return;
+  }
+
+  const activeIndex = getActiveIndex();
+  const targetTrack = tracks[activeIndex + direction];
+
+  if (!targetTrack) {
+    setStatus(direction < 0 ? "첫 번째 곡입니다." : "마지막 곡입니다.");
+    updateNavigationButtons();
+    return;
+  }
+
+  playTrack(targetTrack.id);
 }
 
 function addFiles(fileList) {
@@ -139,6 +178,7 @@ function clearTracks() {
   setStatus("목록이 비워졌습니다.");
   updateSummary();
   renderPlaylist();
+  updateNavigationButtons();
 }
 
 audioInput.addEventListener("change", (event) => {
@@ -173,6 +213,14 @@ playFirstButton.addEventListener("click", () => {
   playTrack(tracks[0].id);
 });
 
+previousButton.addEventListener("click", () => {
+  playAdjacentTrack(-1);
+});
+
+nextButton.addEventListener("click", () => {
+  playAdjacentTrack(1);
+});
+
 clearButton.addEventListener("click", () => {
   clearTracks();
 });
@@ -182,15 +230,17 @@ audioPlayer.addEventListener("ended", () => {
     return;
   }
 
-  const activeIndex = tracks.findIndex((track) => track.id === activeTrackId);
+  const activeIndex = getActiveIndex();
   const nextTrack = tracks[activeIndex + 1];
 
   if (nextTrack) {
     playTrack(nextTrack.id);
   } else {
     setStatus("재생 완료");
+    updateNavigationButtons();
   }
 });
 
 updateSummary();
 renderPlaylist();
+updateNavigationButtons();

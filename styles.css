@@ -241,6 +241,12 @@ audio {
   opacity: 0.92;
 }
 
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
 .playlist {
   display: grid;
   gap: 12px;
