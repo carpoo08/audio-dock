@@ -8,12 +8,15 @@ const fileCount = document.getElementById("file-count");
 const statusText = document.getElementById("status-text");
 const previousButton = document.getElementById("previous-button");
 const nextButton = document.getElementById("next-button");
+const sortButton = document.getElementById("sort-button");
 const playFirstButton = document.getElementById("play-first-button");
+const installButton = document.getElementById("install-button");
 const clearButton = document.getElementById("clear-button");
 
 const tracks = [];
 let activeTrackId = null;
 let nextTrackId = 1;
+let deferredInstallPrompt = null;
 
 function formatBytes(bytes) {
   if (!bytes) {
@@ -38,6 +41,74 @@ function setStatus(message) {
 
 function updateSummary() {
   fileCount.textContent = `${tracks.length}개`;
+}
+
+function splitSortableName(name) {
+  const stem = name.replace(/\.[^.]+$/, "");
+
+  return stem
+    .split(/(\d+)/)
+    .filter(Boolean)
+    .map((part) => {
+      if (/^\d+$/.test(part)) {
+        return {
+          type: "number",
+          value: Number(part),
+        };
+      }
+
+      return {
+        type: "text",
+        value: part.toLowerCase(),
+      };
+    });
+}
+
+function compareTrackNames(leftTrack, rightTrack) {
+  const leftParts = splitSortableName(leftTrack.file.name);
+  const rightParts = splitSortableName(rightTrack.file.name);
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const left = leftParts[index];
+    const right = rightParts[index];
+
+    if (!left) {
+      return -1;
+    }
+
+    if (!right) {
+      return 1;
+    }
+
+    if (left.type === right.type) {
+      if (left.value < right.value) {
+        return -1;
+      }
+
+      if (left.value > right.value) {
+        return 1;
+      }
+
+      continue;
+    }
+
+    if (left.type === "number") {
+      return -1;
+    }
+
+    return 1;
+  }
+
+  return leftTrack.file.name.localeCompare(rightTrack.file.name, "ko-KR", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function sortTracks() {
+  tracks.sort(compareTrackNames);
+  renderPlaylist();
 }
 
 function getActiveIndex() {
@@ -153,9 +224,9 @@ function addFiles(fileList) {
     nextTrackId += 1;
   }
 
+  sortTracks();
   updateSummary();
-  renderPlaylist();
-  setStatus(`${audioFiles.length}개 파일이 추가되었습니다.`);
+  setStatus(`${audioFiles.length}개 파일이 추가되고 이름 순서로 정리되었습니다.`);
 
   if (activeTrackId === null && tracks.length > 0) {
     playTrack(tracks[0].id);
@@ -213,6 +284,16 @@ playFirstButton.addEventListener("click", () => {
   playTrack(tracks[0].id);
 });
 
+sortButton.addEventListener("click", () => {
+  if (tracks.length === 0) {
+    setStatus("정렬할 파일이 없습니다.");
+    return;
+  }
+
+  sortTracks();
+  setStatus("파일 이름 기준으로 순서를 정리했습니다.");
+});
+
 previousButton.addEventListener("click", () => {
   playAdjacentTrack(-1);
 });
@@ -239,6 +320,38 @@ audioPlayer.addEventListener("ended", () => {
     setStatus("재생 완료");
     updateNavigationButtons();
   }
+});
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {
+      setStatus("앱 설치용 준비 중 일부가 등록되지 않았습니다.");
+    });
+  });
+}
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  installButton.classList.remove("hidden");
+});
+
+installButton.addEventListener("click", async () => {
+  if (!deferredInstallPrompt) {
+    setStatus("브라우저 메뉴에서 홈 화면에 추가를 사용해주세요.");
+    return;
+  }
+
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  installButton.classList.add("hidden");
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  installButton.classList.add("hidden");
+  setStatus("앱이 설치되었습니다.");
 });
 
 updateSummary();

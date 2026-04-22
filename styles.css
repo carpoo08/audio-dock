@@ -247,6 +247,14 @@ audio {
   transform: none;
 }
 
+.install-button {
+  background: linear-gradient(135deg, var(--brand), #f39a47);
+}
+
+.hidden {
+  display: none;
+}
+
 .playlist {
   display: grid;
   gap: 12px;

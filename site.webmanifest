@@ -1,9 +1,12 @@
 {
   "name": "Audio Dock",
   "short_name": "Audio Dock",
+  "lang": "ko",
   "description": "오디오 파일을 업로드하고 바로 재생할 수 있는 간단한 웹 플레이어",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#f5efe4",
   "theme_color": "#d05c2f",
   "icons": [
