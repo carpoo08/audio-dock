@@ -13,10 +13,14 @@ const playFirstButton = document.getElementById("play-first-button");
 const installButton = document.getElementById("install-button");
 const clearButton = document.getElementById("clear-button");
 
+const DB_NAME = "audio-dock-db";
+const STORE_NAME = "tracks";
+
 const tracks = [];
 let activeTrackId = null;
 let nextTrackId = 1;
 let deferredInstallPrompt = null;
+let dbPromise = null;
 
 function formatBytes(bytes) {
   if (!bytes) {
@@ -123,6 +127,11 @@ function updateNavigationButtons() {
   nextButton.disabled = !hasTracks || activeIndex === -1 || activeIndex >= tracks.length - 1;
 }
 
+function resetPlayerDetails() {
+  trackTitle.textContent = "재생할 파일을 선택하세요";
+  trackMeta.textContent = "아직 업로드된 오디오가 없습니다.";
+}
+
 function renderPlaylist() {
   playlist.innerHTML = "";
 
@@ -131,6 +140,7 @@ function renderPlaylist() {
     emptyState.className = "empty-state";
     emptyState.textContent = "업로드한 파일이 여기에 표시됩니다.";
     playlist.appendChild(emptyState);
+    updateNavigationButtons();
     return;
   }
 
@@ -163,6 +173,14 @@ function renderPlaylist() {
   }
 
   updateNavigationButtons();
+}
+
+function revokeTrackUrls() {
+  for (const track of tracks) {
+    if (track.url) {
+      URL.revokeObjectURL(track.url);
+    }
+  }
 }
 
 function playTrack(trackId) {
@@ -207,7 +225,124 @@ function playAdjacentTrack(direction) {
   playTrack(targetTrack.id);
 }
 
-function addFiles(fileList) {
+function openDatabase() {
+  if (!("indexedDB" in window)) {
+    return Promise.resolve(null);
+  }
+
+  if (dbPromise) {
+    return dbPromise;
+  }
+
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+  return dbPromise;
+}
+
+async function saveTrackToDatabase(track) {
+  const db = await openDatabase();
+
+  if (!db) {
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+
+    store.put({
+      id: track.id,
+      file: track.file,
+    });
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+async function getAllTracksFromDatabase() {
+  const db = await openDatabase();
+
+  if (!db) {
+    return [];
+  }
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readonly");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.getAll();
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function clearDatabaseTracks() {
+  const db = await openDatabase();
+
+  if (!db) {
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+
+    store.clear();
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+async function hydrateTracksFromDatabase() {
+  try {
+    const savedTracks = await getAllTracksFromDatabase();
+
+    if (savedTracks.length === 0) {
+      updateSummary();
+      renderPlaylist();
+      updateNavigationButtons();
+      return;
+    }
+
+    revokeTrackUrls();
+    tracks.length = 0;
+
+    for (const savedTrack of savedTracks) {
+      tracks.push({
+        id: savedTrack.id,
+        file: savedTrack.file,
+        url: URL.createObjectURL(savedTrack.file),
+      });
+    }
+
+    nextTrackId = Math.max(...tracks.map((track) => track.id)) + 1;
+    sortTracks();
+    updateSummary();
+    resetPlayerDetails();
+    setStatus(`${tracks.length}개 파일을 기기 저장소에서 불러왔습니다.`);
+  } catch {
+    setStatus("저장된 파일을 불러오지 못했습니다.");
+  }
+}
+
+async function addFiles(fileList) {
   const audioFiles = Array.from(fileList).filter((file) => file.type.startsWith("audio/"));
 
   if (audioFiles.length === 0) {
@@ -215,45 +350,60 @@ function addFiles(fileList) {
     return;
   }
 
-  for (const file of audioFiles) {
-    tracks.push({
+  const newTracks = audioFiles.map((file) => {
+    const track = {
       id: nextTrackId,
       file,
       url: URL.createObjectURL(file),
-    });
+    };
+
     nextTrackId += 1;
+    return track;
+  });
+
+  tracks.push(...newTracks);
+
+  try {
+    for (const track of newTracks) {
+      await saveTrackToDatabase(track);
+    }
+  } catch {
+    setStatus("파일은 추가됐지만 기기 저장에는 실패했습니다.");
   }
 
   sortTracks();
   updateSummary();
-  setStatus(`${audioFiles.length}개 파일이 추가되고 이름 순서로 정리되었습니다.`);
 
   if (activeTrackId === null && tracks.length > 0) {
     playTrack(tracks[0].id);
+  } else {
+    setStatus(`${audioFiles.length}개 파일이 추가되고 기기에 저장되었습니다.`);
   }
 }
 
-function clearTracks() {
-  for (const track of tracks) {
-    URL.revokeObjectURL(track.url);
-  }
-
+async function clearTracks() {
+  revokeTrackUrls();
   tracks.length = 0;
   activeTrackId = null;
   audioPlayer.pause();
   audioPlayer.removeAttribute("src");
   audioPlayer.load();
 
-  trackTitle.textContent = "재생할 파일을 선택하세요";
-  trackMeta.textContent = "아직 업로드된 오디오가 없습니다.";
-  setStatus("목록이 비워졌습니다.");
+  try {
+    await clearDatabaseTracks();
+    setStatus("목록과 저장된 파일을 모두 비웠습니다.");
+  } catch {
+    setStatus("화면 목록은 비웠지만 저장소 정리에 실패했습니다.");
+  }
+
+  resetPlayerDetails();
   updateSummary();
   renderPlaylist();
   updateNavigationButtons();
 }
 
-audioInput.addEventListener("change", (event) => {
-  addFiles(event.target.files);
+audioInput.addEventListener("change", async (event) => {
+  await addFiles(event.target.files);
   audioInput.value = "";
 });
 
@@ -271,8 +421,8 @@ audioInput.addEventListener("change", (event) => {
   });
 });
 
-dropzone.addEventListener("drop", (event) => {
-  addFiles(event.dataTransfer.files);
+dropzone.addEventListener("drop", async (event) => {
+  await addFiles(event.dataTransfer.files);
 });
 
 playFirstButton.addEventListener("click", () => {
@@ -302,8 +452,8 @@ nextButton.addEventListener("click", () => {
   playAdjacentTrack(1);
 });
 
-clearButton.addEventListener("click", () => {
-  clearTracks();
+clearButton.addEventListener("click", async () => {
+  await clearTracks();
 });
 
 audioPlayer.addEventListener("ended", () => {
@@ -357,3 +507,5 @@ window.addEventListener("appinstalled", () => {
 updateSummary();
 renderPlaylist();
 updateNavigationButtons();
+resetPlayerDetails();
+hydrateTracksFromDatabase();
